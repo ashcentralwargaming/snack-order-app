@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 type Order = {
@@ -10,127 +10,145 @@ type Order = {
   status: string;
 };
 
-type OrderItem = {
+type MenuItem = {
   id: number;
-  order_id: number;
-  item_name: string;
-  quantity: number;
+  name: string;
   price: number;
+  in_stock: boolean;
 };
 
 export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [items, setItems] = useState<OrderItem[]>([]);
-  const lastSeenOrderId = useRef<number | null>(null);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
 
-  const loadData = async () => {
-    const { data: ordersData, error: ordersError } = await supabase
-      .from("orders")
-      .select("*")
-      .order("id", { ascending: false });
+  const [newName, setNewName] = useState("");
+  const [newPrice, setNewPrice] = useState("");
 
-    const { data: itemsData, error: itemsError } = await supabase
-      .from("order_items")
-      .select("*");
-
-    if (ordersError) console.log("ORDERS ERROR:", ordersError);
-    if (itemsError) console.log("ITEMS ERROR:", itemsError);
-
-    setOrders(ordersData || []);
-    setItems(itemsData || []);
-  };
-
+  // LOAD DATA
   useEffect(() => {
-    loadData();
-
-    const channel = supabase
-      .channel("orders-debug-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        (payload) => {
-          console.log("REALTIME ORDER EVENT:", payload);
-
-          const newOrder = payload.new as Order | undefined;
-
-          if (newOrder && lastSeenOrderId.current !== newOrder.id) {
-            lastSeenOrderId.current = newOrder.id;
-          }
-
-          loadData();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "order_items" },
-        (payload) => {
-          console.log("REALTIME ITEM EVENT:", payload);
-          loadData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    loadOrders();
+    loadMenu();
   }, []);
 
-  const markAsDone = async (id: number) => {
-    console.log("🟡 CLICKED MARK AS DONE:", id);
-
-    const { data, error, status } = await supabase
-      .from("orders")
-      .update({ status: "done" })
-      .eq("id", id)
-      .select();
-
-    console.log("🟢 SUPABASE RESPONSE STATUS:", status);
-    console.log("🟢 SUPABASE DATA:", data);
-    console.log("🔴 SUPABASE ERROR:", error);
-
-    if (error) {
-      alert("UPDATE FAILED: " + error.message);
-      return;
-    }
-
-    console.log("✅ UPDATE SUCCESSFUL");
-
-    await loadData();
+  const loadOrders = async () => {
+    const { data } = await supabase.from("orders").select("*");
+    setOrders(data || []);
   };
 
-  const activeOrders = orders.filter((o) => o.status !== "done");
+  const loadMenu = async () => {
+    const { data } = await supabase.from("menu_items").select("*");
+    setMenu(data || []);
+  };
+
+  // MARK ORDER DONE
+  const markDone = async (id: number) => {
+    await supabase
+      .from("orders")
+      .update({ status: "done" })
+      .eq("id", id);
+
+    setOrders((prev) => prev.filter((o) => o.id !== id));
+  };
+
+  // ADD MENU ITEM
+  const addMenuItem = async () => {
+    if (!newName || !newPrice) return;
+
+    await supabase.from("menu_items").insert([
+      {
+        name: newName,
+        price: Number(newPrice),
+        in_stock: true,
+      },
+    ]);
+
+    setNewName("");
+    setNewPrice("");
+    loadMenu();
+  };
+
+  // UPDATE MENU ITEM
+  const updateItem = async (id: number, field: string, value: any) => {
+    await supabase
+      .from("menu_items")
+      .update({ [field]: value })
+      .eq("id", id);
+
+    loadMenu();
+  };
+
+  // DELETE ITEM
+  const deleteItem = async (id: number) => {
+    await supabase.from("menu_items").delete().eq("id", id);
+    loadMenu();
+  };
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>Admin Dashboard (DEBUG MODE)</h1>
+      <h1 style={styles.title}>Admin Dashboard</h1>
 
-      {activeOrders.length === 0 && (
-        <p style={styles.empty}>No active orders 🎉</p>
-      )}
+      {/* ORDERS */}
+      <h2 style={styles.subtitle}>Orders</h2>
 
-      {activeOrders.map((order) => (
+      {orders.map((order) => (
         <div key={order.id} style={styles.card}>
-          <p><b>Name:</b> {order.name}</p>
-          <p><b>Table:</b> {order.table_number}</p>
+          <p><b>{order.name}</b> - Table {order.table_number}</p>
+          <p>Status: {order.status}</p>
 
-          <p><b>Items:</b></p>
-          <ul>
-            {items
-              .filter((i) => i.order_id === order.id)
-              .map((i) => (
-                <li key={i.id}>
-                  {i.item_name} x{i.quantity}
-                </li>
-              ))}
-          </ul>
-
-          <p><b>Status:</b> {order.status}</p>
-
-          <button
-            onClick={() => markAsDone(order.id)}
-            style={styles.button}
-          >
+          <button onClick={() => markDone(order.id)}>
             Mark as Done
+          </button>
+        </div>
+      ))}
+
+      {/* MENU EDITOR */}
+      <h2 style={styles.subtitle}>Menu Editor</h2>
+
+      <div style={styles.card}>
+        <input
+          placeholder="Item name"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+        />
+
+        <input
+          placeholder="Price"
+          value={newPrice}
+          onChange={(e) => setNewPrice(e.target.value)}
+        />
+
+        <button onClick={addMenuItem}>Add Item</button>
+      </div>
+
+      {menu.map((item) => (
+        <div key={item.id} style={styles.card}>
+          <input
+            value={item.name}
+            onChange={(e) =>
+              updateItem(item.id, "name", e.target.value)
+            }
+          />
+
+          <input
+            value={item.price}
+            onChange={(e) =>
+              updateItem(item.id, "price", Number(e.target.value))
+            }
+          />
+
+          <label>
+            In Stock:
+            <input
+              type="checkbox"
+              checked={item.in_stock}
+              onChange={(e) =>
+                updateItem(item.id, "in_stock", e.target.checked)
+              }
+            />
+          </label>
+
+          <button onClick={() => deleteItem(item.id)}>
+            Delete
           </button>
         </div>
       ))}
@@ -140,34 +158,16 @@ export default function AdminPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    minHeight: "100vh",
-    padding: 30,
-    backgroundColor: "#ffffff",
+    padding: 20,
     fontFamily: "Arial",
-    color: "#000000",
-  },
-  title: {
-    fontSize: 28,
-    marginBottom: 20,
-  },
-  empty: {
-    color: "#444",
-  },
-  card: {
     backgroundColor: "#fff",
-    border: "1px solid #ddd",
-    padding: 16,
-    marginBottom: 12,
-    borderRadius: 10,
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+    color: "#000",
   },
-  button: {
-    marginTop: 10,
-    padding: "10px 14px",
-    backgroundColor: "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
+  title: { fontSize: 28 },
+  subtitle: { marginTop: 20 },
+  card: {
+    padding: 12,
+    border: "1px solid #ccc",
+    marginBottom: 10,
   },
 };
