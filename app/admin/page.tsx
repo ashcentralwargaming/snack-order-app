@@ -72,6 +72,12 @@ export default function AdminPage() {
 
   return (
     <div style={{ padding: 20, fontFamily: "Arial", color: "#000" }}>
+
+      {/* 🔴 HARD TEST MARKER */}
+      <h1 style={{ color: "red", fontSize: 24 }}>
+        ADMIN-FILE-VERSION-001
+      </h1>
+
       <h1>Admin Dashboard</h1>
 
       {/* ORDERS */}
