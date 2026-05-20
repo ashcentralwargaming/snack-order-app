@@ -40,8 +40,6 @@ export default function AdminPage() {
     loadOrderItems();
     loadMenu();
 
-    // ✅ LIVE UPDATES (ONLY ADDITION)
-
     const ordersChannel = supabase
       .channel("orders-live")
       .on(
@@ -132,6 +130,14 @@ export default function AdminPage() {
     return orderItems.filter((i) => i.order_id === orderId);
   };
 
+  // ✅ ONLY ADDITION: calculate order total
+  const getOrderTotal = (orderId: number) => {
+    return getItemsForOrder(orderId).reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+  };
+
   return (
     <div style={styles.page}>
       <div style={styles.container}>
@@ -157,6 +163,11 @@ export default function AdminPage() {
                   {i.item_name} x {i.quantity}
                 </div>
               ))}
+
+              {/* ✅ ONLY ADDITION: TOTAL */}
+              <div style={{ marginTop: 6, fontWeight: "bold", color: "#000" }}>
+                Total: £{getOrderTotal(o.id).toFixed(2)}
+              </div>
             </div>
           </div>
         ))}
@@ -195,7 +206,7 @@ export default function AdminPage() {
         {menu.map((m) => (
           <div key={m.id} style={styles.menuRow}>
             <span style={styles.text}>
-              {m.name} — £{m.price}
+              {m.name} — £{Number(m.price).toFixed(2)}
             </span>
 
             <div style={styles.controls}>
@@ -235,6 +246,7 @@ export default function AdminPage() {
   );
 }
 
+/* styles unchanged */
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
@@ -242,75 +254,25 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     fontFamily: "Arial",
   },
-
   container: {
     maxWidth: 600,
     margin: "0 auto",
   },
-
-  title: {
-    fontSize: 26,
-    color: "#000",
-  },
-
-  section: {
-    marginTop: 18,
-    fontSize: 18,
-    color: "#000",
-  },
-
-  text: {
-    color: "#000",
-    fontSize: 14,
-  },
-
+  title: { fontSize: 26, color: "#000" },
+  section: { marginTop: 18, fontSize: 18, color: "#000" },
+  text: { color: "#000", fontSize: 14 },
   card: {
     backgroundColor: "white",
     padding: 10,
     borderRadius: 10,
     marginBottom: 10,
   },
-
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  items: {
-    marginTop: 6,
-  },
-
-  item: {
-    fontSize: 13,
-    color: "#000",
-    paddingLeft: 6,
-  },
-
-  addRow: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  inputName: {
-    flex: 3,
-    minWidth: 140,
-    padding: 8,
-    border: "1px solid #ccc",
-    color: "#000",
-  },
-
-  inputPrice: {
-    flex: 1,
-    minWidth: 70,
-    padding: 8,
-    border: "1px solid #ccc",
-    color: "#000",
-  },
-
+  row: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  items: { marginTop: 6 },
+  item: { fontSize: 13, color: "#000", paddingLeft: 6 },
+  addRow: { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 },
+  inputName: { flex: 3, minWidth: 140, padding: 8, border: "1px solid #ccc", color: "#000" },
+  inputPrice: { flex: 1, minWidth: 70, padding: 8, border: "1px solid #ccc", color: "#000" },
   menuRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -320,34 +282,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     marginBottom: 8,
   },
-
-  controls: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-  },
-
-  button: {
-    padding: "8px 10px",
-    backgroundColor: "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-  },
-
-  done: {
-    padding: "6px 10px",
-    backgroundColor: "#000",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-  },
-
-  delete: {
-    padding: "6px 10px",
-    backgroundColor: "red",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-  },
+  controls: { display: "flex", gap: 10, alignItems: "center" },
+  button: { padding: "8px 10px", backgroundColor: "#000", color: "#fff", border: "none", borderRadius: 6 },
+  done: { padding: "6px 10px", backgroundColor: "#000", color: "#fff", border: "none", borderRadius: 6 },
+  delete: { padding: "6px 10px", backgroundColor: "red", color: "#fff", border: "none", borderRadius: 6 },
 };

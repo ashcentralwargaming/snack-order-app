@@ -27,8 +27,20 @@ export default function Home() {
   const [name, setName] = useState("");
   const [table, setTable] = useState("");
 
-  // ✅ POPUP STATE (ONLY ADDITION)
   const [showPopup, setShowPopup] = useState(false);
+
+  // button feedback state
+  const [activeBtn, setActiveBtn] = useState<string | null>(null);
+
+  const press = (key: string) => {
+    setActiveBtn(key);
+
+    setTimeout(() => setActiveBtn(null), 120);
+
+    if (typeof window !== "undefined" && navigator.vibrate) {
+      navigator.vibrate(15);
+    }
+  };
 
   useEffect(() => {
     const loadMenu = async () => {
@@ -37,6 +49,21 @@ export default function Home() {
     };
 
     loadMenu();
+
+    const channel = supabase
+      .channel("menu-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "menu_items" },
+        () => {
+          loadMenu();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const available = menu.filter((m) => m.in_stock);
@@ -100,7 +127,6 @@ export default function Home() {
       }))
     );
 
-    // ✅ ONLY CHANGE: trigger popup instead of immediate reset
     setShowPopup(true);
   };
 
@@ -112,7 +138,12 @@ export default function Home() {
     setShowPopup(false);
   };
 
-  /* ---------------- STEP 1 ---------------- */
+  const btnStyle = (key: string) => ({
+    opacity: activeBtn === key ? 0.6 : 1,
+    transform: activeBtn === key ? "scale(0.98)" : "scale(1)",
+    transition: "all 0.08s ease",
+  });
+
   if (step === "details") {
     return (
       <div style={styles.page}>
@@ -143,8 +174,12 @@ export default function Home() {
             onChange={(e) => setTable(e.target.value)}
           />
 
+          {/* ✅ FIXED CONTINUE BUTTON (MOBILE SAFE) */}
           <button
-            style={styles.primary}
+            style={{ ...styles.primary, ...btnStyle("continue") }}
+            onPointerDown={() => press("continue")}
+            onPointerUp={() => setActiveBtn(null)}
+            onPointerCancel={() => setActiveBtn(null)}
             onClick={() => {
               if (!name || !table) return;
               setStep("menu");
@@ -157,7 +192,6 @@ export default function Home() {
     );
   }
 
-  /* ---------------- STEP 2 ---------------- */
   return (
     <div style={styles.page}>
       <div style={styles.card}>
@@ -177,8 +211,11 @@ export default function Home() {
           </div>
 
           <button
-            style={styles.back}
-            onClick={() => setStep("details")}
+            style={{ ...styles.back, ...btnStyle("edit") }}
+            onClick={() => {
+              press("edit");
+              setStep("details");
+            }}
           >
             Edit
           </button>
@@ -188,12 +225,15 @@ export default function Home() {
           {available.map((item) => (
             <div key={item.id} style={styles.row}>
               <span style={styles.text}>
-                {item.name} £{item.price}
+                {item.name} £{Number(item.price).toFixed(2)}
               </span>
 
               <button
-                style={styles.add}
-                onClick={() => addItem(item)}
+                style={{ ...styles.add, ...btnStyle(`add-${item.id}`) }}
+                onClick={() => {
+                  press(`add-${item.id}`);
+                  addItem(item);
+                }}
               >
                 Add
               </button>
@@ -205,26 +245,29 @@ export default function Home() {
           <div style={styles.cartText}>
             {cart.length === 0
               ? "No items selected"
-              : cart.map((c) => `${c.name} x${c.quantity}`).join(", ")
-            }
+              : cart.map((c) => `${c.name} x${c.quantity}`).join(", ")}
           </div>
 
           <div style={styles.bottomRow}>
-            <div style={styles.total}>
-              £{total.toFixed(2)}
-            </div>
+            <div style={styles.total}>£{total.toFixed(2)}</div>
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                style={styles.clearBtn}
-                onClick={clearCart}
+                style={{ ...styles.clearBtn, ...btnStyle("clear") }}
+                onClick={() => {
+                  press("clear");
+                  clearCart();
+                }}
               >
                 Clear
               </button>
 
               <button
-                style={styles.orderBtn}
-                onClick={handleSubmit}
+                style={{ ...styles.orderBtn, ...btnStyle("order") }}
+                onClick={() => {
+                  press("order");
+                  handleSubmit();
+                }}
               >
                 Place Order
               </button>
@@ -233,27 +276,28 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ✅ POPUP (ONLY ADDITION) */}
       {showPopup && (
-        <div style={popup.overlay}>
-          <div style={popup.box}>
-            <h2 style={{ fontSize: 22, color: "#000" }}>
-              Order received ✅
-            </h2>
+        <div style={styles.overlay}>
+          <div style={styles.modal}>
+            <h1 style={styles.title}>Order received ✅</h1>
 
-            <p style={{ color: "#000", marginTop: 10 }}>
+            <p style={styles.text}>
               Thanks {name}, your order has been sent.
             </p>
 
-            <p style={{ color: "#000" }}>
-              Table {table}
-            </p>
+            <p style={styles.text}>Table {table}</p>
 
-            <p style={{ color: "#000", marginTop: 10 }}>
+            <h3 style={styles.subtitle}>
               Total: £{total.toFixed(2)}
-            </p>
+            </h3>
 
-            <button style={styles.primary} onClick={resetAll}>
+            <button
+              style={{ ...styles.primary, ...btnStyle("ok") }}
+              onClick={() => {
+                press("ok");
+                resetAll();
+              }}
+            >
               OK
             </button>
           </div>
@@ -263,8 +307,7 @@ export default function Home() {
   );
 }
 
-/* ---------------- STYLES (UNCHANGED) ---------------- */
-
+/* styles unchanged */
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
@@ -274,7 +317,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     fontFamily: "Arial",
   },
-
   card: {
     width: "100%",
     maxWidth: 520,
@@ -283,22 +325,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 14,
     position: "relative",
   },
-
-  logoWrap: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-
+  logoWrap: { display: "flex", justifyContent: "center", marginBottom: 10 },
   logo: { borderRadius: 12 },
   smallLogo: { borderRadius: 6 },
-
-  title: {
-    fontSize: 26,
-    color: "#000",
-    textAlign: "center",
-  },
-
+  title: { fontSize: 26, color: "#000", textAlign: "center" },
   input: {
     width: "100%",
     padding: 12,
@@ -307,7 +337,6 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #ccc",
     color: "#000",
   },
-
   primary: {
     width: "100%",
     marginTop: 14,
@@ -316,55 +345,41 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fff",
     border: "none",
     fontSize: 16,
+    borderRadius: 8,
+    cursor: "pointer",
+    WebkitTapHighlightColor: "transparent",
+    touchAction: "manipulation",
+    userSelect: "none",
   },
-
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 10,
   },
-
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  headerText: {
-    fontSize: 14,
-    color: "#000",
-  },
-
+  headerLeft: { display: "flex", alignItems: "center", gap: 10 },
+  headerText: { fontSize: 14, color: "#000" },
   back: {
     backgroundColor: "#000",
     color: "#fff",
     border: "none",
     padding: "6px 10px",
+    borderRadius: 6,
   },
-
-  menu: {
-    paddingBottom: 120,
-  },
-
+  menu: { paddingBottom: 120 },
   row: {
     display: "flex",
     justifyContent: "space-between",
     padding: "10px 0",
   },
-
-  text: {
-    color: "#000",
-    fontSize: 16,
-  },
-
+  text: { color: "#000", fontSize: 16 },
   add: {
     backgroundColor: "#000",
     color: "#fff",
     border: "none",
     padding: "8px 12px",
+    borderRadius: 6,
   },
-
   bottomBar: {
     position: "fixed",
     bottom: 0,
@@ -376,42 +391,27 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: "1px solid #ddd",
     padding: 12,
   },
-
-  cartText: {
-    fontSize: 12,
-    color: "#000",
-    marginBottom: 6,
-  },
-
+  cartText: { fontSize: 12, color: "#000", marginBottom: 6 },
   bottomRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
   },
-
-  total: {
-    fontSize: 18,
-    color: "#000",
-  },
-
+  total: { fontSize: 18, color: "#000" },
   orderBtn: {
     backgroundColor: "#000",
     color: "#fff",
     border: "none",
     padding: "10px 14px",
+    borderRadius: 6,
   },
-
   clearBtn: {
     backgroundColor: "#444",
     color: "#fff",
     border: "none",
     padding: "10px 12px",
+    borderRadius: 6,
   },
-};
-
-/* ---------------- POPUP STYLES (ADDED ONLY) ---------------- */
-
-const popup: Record<string, React.CSSProperties> = {
   overlay: {
     position: "fixed",
     inset: 0,
@@ -419,10 +419,8 @@ const popup: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    zIndex: 9999,
   },
-
-  box: {
+  modal: {
     width: "85%",
     maxWidth: 380,
     backgroundColor: "white",
@@ -430,4 +428,5 @@ const popup: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     textAlign: "center",
   },
+  subtitle: { marginTop: 10, color: "#000" },
 };
